@@ -493,7 +493,7 @@ function initCloud(){
   var site = SITE_ID_OVERRIDE || (st && st.siteId) ||
              new URLSearchParams(location.search).get("site") || "class-fund";
   CFG = { url:String(url).replace(/\/+$/,""), key:String(key), site:String(site) };
-  cloud.online = !!(CFG.url && CFG.key);
+  cloud.online = !!(CFG.url && CFG.key);   // 布尔值
   cloud.msg = cloud.online ? "连接云端…" : "本地缓存模式";
   return CFG;
 }
@@ -598,6 +598,8 @@ async function pullCloud(manual){
     const cAnns = rows.map(rowToAnn).filter(Boolean);
     const hasCloudData = cRecs.length > 0 || cAnns.length > 0;
     const meta = metaRead();
+    // 记录云端真实存在的公告，供后续判断"删除要不要落到云端"
+    cloudKnownAids = new Set(cAnns.map(a => String(a._rowId)));
 
     if (!hasCloudData && (records.length || announces.length)) {
       // 云端还是空的，而本机已有数据 → 首次上传（仅在管理员登录后执行，避免访客把默认数据推上去）
@@ -669,7 +671,7 @@ async function pushCloud(silent, mode){
   if (!adminToken && !adminMode) { if(!silent) toast("请先登录管理员再同步", false); return false; }
   if (cloud.syncing) { cloud.queued = true; return true; }
   if (!mode) mode = "dirty";
-  if (mode === "dirty" && !recDirty.size && !annDirty.size) return true;   // 无改动，省一次请求
+  if (mode === "dirty" && !recDirty.size && !annDirty.size && !recDeleted.size) return true;   // 无改动，省一次请求
   cloud.syncing = true; cloud.queued = false;
   setSync("busy", "上传中…");
   try {
@@ -700,8 +702,13 @@ async function pushCloud(silent, mode){
       }
       byRid.delete(r.id);
     });
-    // 只有整机覆盖时才回收云端孤儿行；增量模式绝不删除，避免误删别的设备刚录入的数据
+    // 整机覆盖：回收云端孤儿行
     if (mode === "full") byRid.forEach(row => ops.push(cloudDelete(row.id)));
+    // 增量模式：只回收本机明确删掉的那几条
+    else recDeleted.forEach(id => {
+      const row = byRid.get(id);
+      if (row) { ops.push(cloudDelete(row.id)); byRid.delete(id); }
+    });
 
     // ---- 班级公告 ----
     announces.forEach(a => {
@@ -718,12 +725,24 @@ async function pushCloud(silent, mode){
       byAid.delete(a.id);
     });
     if (mode === "full") byAid.forEach(row => ops.push(cloudDelete(row.id)));
+    else {
+      // 增量模式：本机删掉的公告，云端那一行要真正回收
+      annDirty.forEach(aid => {
+        const row = byAid.get(aid);
+        if (row) { ops.push(cloudDelete(row.id)); byAid.delete(aid); }
+      });
+      // 兜底：云端有、本机完全没有、且本机确实配置过公告 → 说明是被删掉的
+      if (annConfiguredLocally()) {
+        byAid.forEach((row, aid) => { ops.push(cloudDelete(row.id)); byAid.delete(aid); });
+      }
+    }
 
     if (toInsert.length)    ops.push(cloudInsert(toInsert.map(p=>({ site_id: CFG.site, payload: p }))));
     if (annToInsert.length) ops.push(cloudInsert(annToInsert.map(p=>({ site_id: CFG.site, payload: p }))));
     await Promise.all(ops);
 
-    recDirty.clear(); annDirty.clear();
+    recDirty.clear(); annDirty.clear(); recDeleted.clear();
+    cloudKnownAids = new Set(announces.map(a => String(a.id)));   // 此刻云端与本机已一致
     const meta = metaRead(); meta.pushedOnce = true; metaWrite(meta);
     cacheWrite();
     setSync("ok", "已同步 · " + records.length + " 笔收支 / " + announces.length + " 条公告");
@@ -749,6 +768,13 @@ let records = [], adminMode = false, activePage = "overview", ledgerFilter = { q
    annDirty = 公告被管理员改动过、尚未成功上传的 id
    云端数据一旦存在就以云端为准，避免旧的本地缓存把云端内容覆盖回去 */
 let recDirty = new Set(), annDirty = new Set();
+/* 已在本机删除、等待云端回收的记录 id。
+   删除也走统一同步队列，避免"删了又回来"。 */
+let recDeleted = new Set();
+/* 上次从云端实际读到的公告 aid 集合。
+   用它区分"云端确实有这一行、被本机删掉了"（要发 DELETE）
+   与"从未上传过的占位公告"（什么都不用做）。 */
+let cloudKnownAids = new Set();
 
 /* 兼容旧版本地数据（id 为数字时间戳） */
 function normalizeRecord(r){
@@ -1094,14 +1120,10 @@ function saveAnnEdit(){
 }
 function delAnn(i){
   const a=announces[i];if(!a)return;
-  announces.splice(i,1);saveAnn();closeAnn();render();
-  if(cloud.online){
-    cloudList().then(rows=>{
-      const hit=(rows||[]).find(r=>r.payload&&r.payload.kind==="announce"&&String(r.payload.aid)===String(a.id));
-      if(hit)return cloudDelete(hit.id);
-    }).then(()=>setSync("ok","已同步 · "+records.length+" 笔收支 / "+announces.length+" 条公告"))
-      .catch(e=>{setSync("err","删除同步失败");console.warn(e);});
-  }
+  announces.splice(i,1);
+  annDirty.add(a.id);          // 交给同步队列：云端按失踪的 aid 回收这一行
+  saveAnn();closeAnn();render();
+  pushCloud(true);             // 静默推送，连续删除也不会互相打架
   toast("公告已删除");
 }
 const annO=document.getElementById("annOverlay");
@@ -1225,20 +1247,14 @@ const delO=document.getElementById("delOverlay");let delId=null;
 function promptDelete(id){const r=records.find(x=>String(x.id)===String(id));if(!r)return;delId=String(id);document.getElementById("delDesc").textContent=`「${r.item}」±¥${fmt(r.amount)} · ${r.date||"—"}`;delO.classList.add("show");}
 document.getElementById("delCancel").addEventListener("click",()=>delO.classList.remove("show"));
 delO.addEventListener("click",e=>{if(e.target===delO)delO.classList.remove("show");});
-document.getElementById("delConfirm").addEventListener("click",async()=>{
+document.getElementById("delConfirm").addEventListener("click",()=>{
   if(delId==null)return;
-  const gone=records.find(r=>String(r.id)===delId);
-  records=records.filter(r=>String(r.id)!==delId);
-  recDirty.delete(delId);
+  const goneId=delId;
+  records=records.filter(r=>String(r.id)!==goneId);
+  recDirty.delete(goneId);
+  recDeleted.add(goneId);      // 交给同步队列回收云端那一行
   delId=null;save();delO.classList.remove("show");render();
-  if(cloud.online){
-    try{
-      const rows=await cloudList();
-      const hit=(rows||[]).find(r=>r.payload&&r.payload.kind==="record"&&String(r.payload.rid)===String(gone&&gone.id));
-      if(hit)await cloudDelete(hit.id);
-      setSync("ok","已同步 · "+records.length+" 笔收支 / "+announces.length+" 条公告");
-    }catch(e){setSync("err","删除同步失败");console.warn(e);}
-  }
+  pushCloud(true);
   toast("记录已删除");
 });
 
