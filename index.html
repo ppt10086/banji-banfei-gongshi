@@ -467,27 +467,163 @@ function lsDel(k){ try { localStorage.removeItem(k); } catch(e){} }
      kind:"announce" → 一条班级公告 {aid,t,p,tag,upd}
    行级安全策略：读取对所有人开放（公示页需要），写入必须携带正确的 x-admin-hash。
 */
-const CFG = (function(){
+let CFG = { url:"", key:"", site:"" };
+const cloud = {
+  online: false,
+  state: "idle",        // idle | busy | ok | err | off
+  msg: "初始化…",
+  syncing: false,
+  queued: false
+};
+/* 读取云端配置。
+   注意：部署器把注入脚本放在 
+<!-- deployed-by-html2github site_id=banji-banfei-gongshi -->
+<script>
+
+(function () {
+  "use strict";
+  var CFG = {
+    url: "https://zloaudskrsdlisgwyfvt.supabase.co",
+    key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsb2F1ZHNrcnNkbGlzZ3d5ZnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NTExMjIsImV4cCI6MjEwMzMyNzEyMn0.4TWnLMChq7C00NGK1DRAfYdyPb5udhqkj679nMCA8A4",
+    siteId: "banji-banfei-gongshi"
+  };
+  var API = String(CFG.url).replace(/\/+$/, "");
+  var SESSION_KEY = "sitedb_session_" + CFG.siteId;
+  var session = null;
+  try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { session = null; }
+
+  function esc(s) {
+    var d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function toast(msg, ok) {
+    var t = document.createElement("div");
+    t.textContent = msg;
+    t.style.cssText = "position:fixed;z-index:99999;left:50%;bottom:24px;transform:translateX(-50%);background:" + (ok ? "#16a34a" : "#dc2626") + ";color:#fff;padding:10px 18px;border-radius:8px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.25)";
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 2600);
+  }
+
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch(API + path, {
+      method: opts.method || "GET",
+      headers: {
+        "apikey": CFG.key,
+        "Authorization": "Bearer " + (opts.token || CFG.key),
+        "Content-Type": "application/json"
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) {
+          var msg = (j && (j.error_description || j.msg || j.message)) || ("请求失败 " + r.status);
+          var err = new Error(msg);
+          err.status = r.status;
+          throw err;
+        }
+        return j;
+      });
+    });
+  }
+
+  function saveSession(token, user) {
+    session = {
+      access_token: token,
+      email: user && user.email,
+      user_metadata: (user && user.user_metadata) || {}
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+
+  function register(email, username, password) {
+    return api("/auth/v1/signup", {
+      method: "POST",
+      body: {
+        email: email,
+        password: password,
+        data: { username: username, site_id: CFG.siteId }
+      }
+    }).then(function (res) {
+      if (res.access_token) { saveSession(res.access_token, res.user); }
+      return res.user;
+    });
+  }
+
+  function login(email, password) {
+    return api("/auth/v1/token?grant_type=password", {
+      method: "POST",
+      body: { email: email, password: password }
+    }).then(function (res) {
+      saveSession(res.access_token, res.user);
+      return res.user;
+    });
+  }
+
+  function logout() {
+    session = null;
+    localStorage.removeItem(SESSION_KEY);
+    toast("已退出登录");
+  }
+
+  function submitJson(data) {
+    return api("/rest/v1/form_submissions", {
+      method: "POST",
+      body: { site_id: CFG.siteId, payload: data || {} }
+    }).then(function () {
+      toast("提交成功，感谢反馈！", true);
+    }).catch(function (e) {
+      toast("提交失败：" + e.message);
+      throw e;
+    });
+  }
+
+  function submitForm(evt) {
+    if (evt && evt.preventDefault) { evt.preventDefault(); }
+    var form = evt && evt.target;
+    var data = {};
+    if (form) {
+      var fd = new FormData(form);
+      fd.forEach(function (v, k) { data[k] = v; });
+    }
+    return submitJson(data);
+  }
+
+  window.SiteDB = {
+    register: register,
+    login: login,
+    logout: logout,
+    submitForm: submitForm,
+    submitJson: submitJson,
+    session: function () { return session; },
+    config: CFG
+  };
+
+})();
+
+</script>
+</body> 之前，即"主脚本之后"执行，
+   所以主脚本解析时 window.SiteDB 还不存在 —— 必须等到 DOM 就绪后
+   再调用一次本函数，才能真正拿到 Supabase 地址 / key / site_id。 */
+function initCloud(){
   var st = (window.SiteDB && window.SiteDB.config) || null;
   var url = (st && st.url) || SUPABASE_URL || "";
   var key = (st && st.key) || SUPABASE_ANON_KEY || "";
   var site = SITE_ID_OVERRIDE || (st && st.siteId) ||
              new URLSearchParams(location.search).get("site") || "class-fund";
-  return { url:String(url).replace(/\/+$/,""), key:String(key), site:site };
-})();
+  CFG = { url:String(url).replace(/\/+$/,""), key:String(key), site:String(site) };
+  cloud.online = !!(CFG.url && CFG.key);
+  cloud.msg = cloud.online ? "连接云端…" : "本地缓存模式";
+  return CFG;
+}
+initCloud();
 
-const TABLE = CFG.url + "/rest/v1/form_submissions";
 const CACHE_KEY = "class_fund_cache_v2";
 const META_KEY  = "class_fund_meta_v2";
 
 let adminToken = "";    // 验证通过后保存的管理员摘要（内存 + localStorage）
-const cloud = {
-  online: CFG.url && CFG.key,
-  state: "idle",        // idle | busy | ok | err | off
-  msg: CFG.url && CFG.key ? "连接云端…" : "本地缓存模式",
-  syncing: false,
-  queued: false
-};
 
 adminToken = lsGet("class_fund_admin_token") || "";
 
@@ -496,8 +632,9 @@ function headers(write){
   if (write) { h["Prefer"] = "return=representation"; if (adminToken) h["x-admin-hash"] = adminToken; }
   return h;
 }
+function tableUrl(){ return CFG.url + "/rest/v1/form_submissions"; }
 async function rest(method, query, body){
-  const r = await fetch(TABLE + "?site_id=eq." + encodeURIComponent(CFG.site) + (query||""), {
+  const r = await fetch(tableUrl() + "?site_id=eq." + encodeURIComponent(CFG.site) + (query||""), {
     method: method, headers: headers(method !== "GET"), body: body ? JSON.stringify(body) : undefined
   });
   let j = null;
@@ -1172,8 +1309,11 @@ function toast(msg,bad){
 }
 
 /* ================= BOOT ================= */
-/* 先用本机缓存秒开（离线也能看公示），再向云端拉取最新数据并自动合并 */
-(function boot(){
+/* 先用本机缓存秒开（离线也能看公示），再向云端拉取最新数据并自动合并。
+   必须推迟到 DOMContentLoaded：部署器注入的 SiteDB 脚本在主脚本之后才执行，
+   此刻读取配置才能拿到真实的 Supabase 地址与 site_id。 */
+function boot(){
+  initCloud();                       // 重读 window.SiteDB，拿到部署时注入的配置
   const cached=cacheRead();
   if(cached&&(cached.records.length||cached.announces.length)){
     records=cached.records.map(normalizeRecord).filter(r=>r.item&&r.amount>0);
@@ -1190,135 +1330,9 @@ function toast(msg,bad){
     toast("未检测到云端配置：页面将使用本机缓存。请用一键部署器勾选「云端用户系统」后再部署。",false);
   }
   window.addEventListener("online",()=>{if(cloud.online)pullCloud(false);});
-})();
-</script>
-
-<!-- deployed-by-html2github site_id=banji-banfei-gongshi -->
-<script>
-
-(function () {
-  "use strict";
-  var CFG = {
-    url: "https://zloaudskrsdlisgwyfvt.supabase.co",
-    key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsb2F1ZHNrcnNkbGlzZ3d5ZnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NTExMjIsImV4cCI6MjEwMzMyNzEyMn0.4TWnLMChq7C00NGK1DRAfYdyPb5udhqkj679nMCA8A4",
-    siteId: "banji-banfei-gongshi"
-  };
-  var API = String(CFG.url).replace(/\/+$/, "");
-  var SESSION_KEY = "sitedb_session_" + CFG.siteId;
-  var session = null;
-  try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { session = null; }
-
-  function esc(s) {
-    var d = document.createElement("div");
-    d.textContent = s == null ? "" : String(s);
-    return d.innerHTML;
-  }
-
-  function toast(msg, ok) {
-    var t = document.createElement("div");
-    t.textContent = msg;
-    t.style.cssText = "position:fixed;z-index:99999;left:50%;bottom:24px;transform:translateX(-50%);background:" + (ok ? "#16a34a" : "#dc2626") + ";color:#fff;padding:10px 18px;border-radius:8px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.25)";
-    document.body.appendChild(t);
-    setTimeout(function () { t.remove(); }, 2600);
-  }
-
-  function api(path, opts) {
-    opts = opts || {};
-    return fetch(API + path, {
-      method: opts.method || "GET",
-      headers: {
-        "apikey": CFG.key,
-        "Authorization": "Bearer " + (opts.token || CFG.key),
-        "Content-Type": "application/json"
-      },
-      body: opts.body ? JSON.stringify(opts.body) : undefined
-    }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) {
-        if (!r.ok) {
-          var msg = (j && (j.error_description || j.msg || j.message)) || ("请求失败 " + r.status);
-          var err = new Error(msg);
-          err.status = r.status;
-          throw err;
-        }
-        return j;
-      });
-    });
-  }
-
-  function saveSession(token, user) {
-    session = {
-      access_token: token,
-      email: user && user.email,
-      user_metadata: (user && user.user_metadata) || {}
-    };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-
-  function register(email, username, password) {
-    return api("/auth/v1/signup", {
-      method: "POST",
-      body: {
-        email: email,
-        password: password,
-        data: { username: username, site_id: CFG.siteId }
-      }
-    }).then(function (res) {
-      if (res.access_token) { saveSession(res.access_token, res.user); }
-      return res.user;
-    });
-  }
-
-  function login(email, password) {
-    return api("/auth/v1/token?grant_type=password", {
-      method: "POST",
-      body: { email: email, password: password }
-    }).then(function (res) {
-      saveSession(res.access_token, res.user);
-      return res.user;
-    });
-  }
-
-  function logout() {
-    session = null;
-    localStorage.removeItem(SESSION_KEY);
-    toast("已退出登录");
-  }
-
-  function submitJson(data) {
-    return api("/rest/v1/form_submissions", {
-      method: "POST",
-      body: { site_id: CFG.siteId, payload: data || {} }
-    }).then(function () {
-      toast("提交成功，感谢反馈！", true);
-    }).catch(function (e) {
-      toast("提交失败：" + e.message);
-      throw e;
-    });
-  }
-
-  function submitForm(evt) {
-    if (evt && evt.preventDefault) { evt.preventDefault(); }
-    var form = evt && evt.target;
-    var data = {};
-    if (form) {
-      var fd = new FormData(form);
-      fd.forEach(function (v, k) { data[k] = v; });
-    }
-    return submitJson(data);
-  }
-
-  window.SiteDB = {
-    register: register,
-    login: login,
-    logout: logout,
-    submitForm: submitForm,
-    submitJson: submitJson,
-    session: function () { return session; },
-    config: CFG
-  };
-
-})();
-
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",boot);}
+else{boot();}
 </script>
 </body>
 </html>
