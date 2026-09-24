@@ -85,14 +85,17 @@ button{font-family:inherit}
 /* 遮罩只压暗、不做模糊：
    原来的 backdrop-filter:blur() 会把遮罩之下的整个页面一起模糊掉，
    在手机上一打开抽屉就是"全屏糊掉"的观感。 */
-.side-backdrop{position:fixed;inset:0;background:rgba(10,12,16,.55);opacity:0;pointer-events:none;
-  transition:opacity .26s var(--ease);z-index:40;touch-action:manipulation}
-.side-backdrop.show{opacity:1;pointer-events:auto;z-index:55}
+/* 遮罩只覆盖"抽屉以外"的区域（left 由 :has() 或 JS 设为抽屉宽度）。
+   这样它天然不会盖住抽屉里的按钮与导航项 ——
+   早先把遮罩提到 z=55 是为了让左上角三条杠浮在上面，
+   结果遮罩反压住抽屉，导致抽屉里的关闭按钮点不动。 */
+.side-backdrop{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(10,12,16,.55);
+  opacity:0;pointer-events:none;transition:opacity .26s var(--ease);z-index:40;touch-action:manipulation}
+.side-backdrop.show{opacity:1;pointer-events:auto;z-index:45}
 @media (max-width:920px){
   /* 侧边栏脱离文档流：浮在内容之上，不再占宽度 */
-  /* 抽屉宽度刻意留出足够的"抽屉外区域"：手机上点抽屉外面任何地方都能收起。
-     84vw 在 390px 机型上会让遮罩只剩 ~110px，实机很容易点空。 */
-  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;width:min(75vw,270px);flex-basis:auto;
+  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;
+    width:var(--drawer-w,min(80vw,286px));flex-basis:auto;
     transform:translateX(-104%);transition:transform .3s var(--ease);box-shadow:0 18px 50px rgba(0,0,0,.28);
     padding-top:calc(14px + env(safe-area-inset-top))}
   .sidebar:not(.collapsed){transform:translateX(0)}
@@ -102,6 +105,9 @@ button{font-family:inherit}
      这里让它脱离侧边栏定位，抽屉开或关都在同一个位置。 */
   /* 窄屏顶部空间宝贵：左上角只保留三条杠，深色模式按钮移入抽屉。
      抽屉本就覆盖全屏，按钮放里面既不占顶部空间，也绝不会与三条杠重叠。 */
+  /* 遮罩左边跟着抽屉宽度走：抽屉之外才是遮罩 */
+  .side-backdrop{left:var(--drawer-w,min(80vw,286px))}
+  /* 抽屉打开时遮罩左侧与抽屉右缘对齐看不到缝，视觉上仍是整屏压暗 */
   .corner-controls{top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left))}
   .corner-controls .collapse-btn{width:40px;height:40px;background:var(--panel);
     border:1px solid var(--line);box-shadow:0 6px 18px rgba(24,30,44,.16);color:var(--ink)}
@@ -437,9 +443,9 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
   .form-row{grid-template-columns:1fr;gap:0}
   .form-row .form-group{margin-bottom:15px}
 
-  /* 手机上的抽屉宽度：留出足够宽的"抽屉外区域"，
-     让用户点哪都能收起（原来 80vw 在 390px 机型上只剩 ~110px 可点区）。 */
-  .sidebar{width:min(72vw,264px)}
+  /* 手机上的抽屉宽度：略收窄，保证抽屉外仍有足够的可点区域 */
+  .sidebar{width:var(--drawer-w,min(76vw,268px))}
+  .side-backdrop{left:var(--drawer-w,min(76vw,268px))}
 }
 
 /* 超窄机（320 一档）：进一步收紧留白，保证内容舒展 */
