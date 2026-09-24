@@ -34,20 +34,27 @@ button{font-family:inherit}
 .app{display:flex;width:100%;height:100vh;height:100dvh}
 
 /* ---------- Sidebar ---------- */
-.sidebar{width:272px;flex:0 0 272px;height:100%;display:flex;flex-direction:column;padding:14px;background:var(--surface);border-right:1px solid var(--line);box-shadow:var(--shadow);transition:width .26s var(--ease),flex-basis .26s var(--ease);overflow:hidden}
+.sidebar{width:272px;flex:0 0 272px;height:100%;display:flex;flex-direction:column;padding:14px 14px 14px;background:var(--surface);border-right:1px solid var(--line);box-shadow:var(--shadow);transition:width .26s var(--ease),flex-basis .26s var(--ease);overflow:hidden}
 .sidebar.collapsed{width:60px;flex-basis:60px;padding:14px 9px}
 .sidebar.is-anim{box-shadow:none}
 .theme-top{display:flex;align-items:center;gap:9px;padding:4px 4px 12px;border-bottom:1px solid var(--line);margin-bottom:10px;overflow:hidden}
-.theme-btn{flex:0 0 34px;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer;transition:.25s var(--ease)}
-.theme-btn:hover{color:var(--accent);border-color:var(--accent);transform:translateY(-1px)}
-.theme-btn svg{width:17px;height:17px}
-.theme-txt{font-size:12.5px;font-weight:600;white-space:nowrap;opacity:1;transition:opacity .2s}
-.sidebar.collapsed .theme-txt{opacity:0}
-.side-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;padding-left:44px;min-height:40px}
-.collapse-btn{position:absolute;top:20px;left:22px;z-index:30;
-  width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
-  background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer;
-  transition:color .25s var(--ease),border-color .25s var(--ease),transform .25s var(--ease);padding:0}
+/* 左上角控件组：钉在视口左上角，不随侧边栏移动，两个按钮并排且永不重叠 */
+.corner-controls{position:fixed;top:calc(14px + env(safe-area-inset-top));
+  left:calc(14px + env(safe-area-inset-left));z-index:70;display:flex;align-items:center;gap:8px}
+.theme-btn{flex:0 0 38px;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer;padding:0;
+  transition:color .25s var(--ease),border-color .25s var(--ease);box-shadow:0 6px 18px rgba(24,30,44,.10)}
+.theme-btn:hover{color:var(--accent);border-color:var(--accent)}
+.theme-btn svg{width:18px;height:18px}
+.theme-txt{font-size:12.5px;font-weight:600;white-space:nowrap;transition:opacity .2s}
+/* 宽屏：三条杠按钮固定在左上角，侧边栏首行整体下移给它让位，避免重叠 */
+/* 首行让开左上角控件组的高度（38px 按钮 + 上下留白） */
+.side-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;min-height:0;padding-top:46px}
+/* 三条杠按钮：作为 .corner-controls 的流内成员，由 flex 决定位置，
+   不再自己定位（自己定位会与容器偏移叠加，导致与深色模式按钮重叠）。 */
+.collapse-btn{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer;padding:0;
+  transition:color .25s var(--ease),border-color .25s var(--ease);box-shadow:0 6px 18px rgba(24,30,44,.10)}
 .collapse-btn:hover{color:var(--accent);border-color:var(--accent)}
 .collapse-btn svg{width:18px;height:18px}
 .side-tag{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden}
@@ -69,31 +76,45 @@ button{font-family:inherit}
 .sidebar.collapsed .side-top{justify-content:center}
 
 /* ---------- 移动端抽屉与遮罩 ---------- */
-.side-backdrop{position:fixed;inset:0;background:rgba(10,12,16,.46);opacity:0;pointer-events:none;transition:opacity .26s var(--ease);z-index:40;-webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px)}
+/* 遮罩只压暗、不做模糊：
+   原来的 backdrop-filter:blur() 会把遮罩之下的整个页面一起模糊掉，
+   在手机上一打开抽屉就是"全屏糊掉"的观感。 */
+.side-backdrop{position:fixed;inset:0;background:rgba(10,12,16,.55);opacity:0;pointer-events:none;transition:opacity .26s var(--ease);z-index:40}
 .side-backdrop.show{opacity:1;pointer-events:auto;z-index:55}
 @media (max-width:920px){
   /* 侧边栏脱离文档流：浮在内容之上，不再占宽度 */
   .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;width:min(84vw,296px);flex-basis:auto;
     transform:translateX(-104%);transition:transform .3s var(--ease);box-shadow:0 18px 50px rgba(0,0,0,.28);
-    padding-top:calc(22px + env(safe-area-inset-top))}
+    padding-top:calc(14px + env(safe-area-inset-top))}
   .sidebar:not(.collapsed){transform:translateX(0)}
 
   /* 三条杠按钮钉在视口左上角：
      它原本在侧边栏内部，抽屉收起时会被一起移出屏幕（→ 用户看不到按钮）。
      这里让它脱离侧边栏定位，抽屉开或关都在同一个位置。 */
-  /* 按钮此时已在侧边栏之外，fixed 能真正相对视口定位，稳稳钉在左上角。
-     z-index 高于遮罩(55)与抽屉(50)：抽屉展开时它依然可见可点，作为统一的开关。 */
-  .collapse-btn{position:fixed;top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));
-    z-index:70;width:40px;height:40px;background:var(--panel);border:1px solid var(--line);
-    box-shadow:0 6px 18px rgba(24,30,44,.16);color:var(--ink)}
-  .collapse-btn svg{width:20px;height:20px}
-  .side-top{height:0;margin:0;padding:0;overflow:visible;min-height:0}
-  /* 抽屉里不再重复显示品牌名（按钮已移出，留着只会错位） */
-  .side-tag{display:none}
+  /* 窄屏顶部空间宝贵：左上角只保留三条杠，深色模式按钮移入抽屉。
+     抽屉本就覆盖全屏，按钮放里面既不占顶部空间，也绝不会与三条杠重叠。 */
+  .corner-controls{top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left))}
+  .corner-controls .collapse-btn{width:40px;height:40px;background:var(--panel);
+    border:1px solid var(--line);box-shadow:0 6px 18px rgba(24,30,44,.16);color:var(--ink)}
+  .corner-controls .collapse-btn svg{width:20px;height:20px}
+  /* 窄屏：深色模式按钮与三条杠并排钉在左上角，仅抽屉展开时显示。
+     position 必须是 fixed（不能是 absolute）—— absolute 会相对 .corner-controls
+     定位，而三条杠在流内，于是左偏移叠加成 x≈32，正好压在三条杠下面。
+     另外选择器权重需与基础规则 (.corner-controls .theme-btn) 持平，否则被覆盖。 */
+  .corner-controls .theme-btn{position:fixed;top:calc(13px + env(safe-area-inset-top));
+    left:calc(60px + env(safe-area-inset-left));width:38px;height:38px;
+    opacity:0;pointer-events:none;visibility:hidden;transition:opacity .2s var(--ease)}
+  /* 抽屉展开时把深色模式按钮显示出来；收起时它随抽屉一起隐藏。
+     用 :has() 直接读侧边栏状态，比兄弟选择器稳。 */
+  body:has(.sidebar:not(.collapsed)) .corner-controls .theme-btn{
+    opacity:1;pointer-events:auto;visibility:visible}
+  .theme-txt{display:none}
+  /* 抽屉里首行让开深色模式按钮 */
+  .side-top{padding-top:52px}
   /* 顶栏让开按钮：左上留出按钮宽度 + 间距，标题与按钮同高。
      注意必须写在 680/560 断点之后并提高选择器权重，
      否则会被"容器内边距统一收窄"的规则覆盖掉，标题就会压到按钮下面。 */
-  .topbar{padding-left:62px !important;min-height:66px;align-items:flex-start}
+  .topbar{padding-left:112px !important;min-height:66px;align-items:flex-start}
   .topbar>div:first-child{padding-top:8px}
   /* 确认删除按钮与其他固定层的层级低于抽屉 */
   .overlay{z-index:80}
@@ -413,8 +434,9 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
 /* 超窄机（320 一档）：进一步收紧留白，保证内容舒展 */
 @media (max-width:380px){
   .content{padding-left:11px;padding-right:11px}
-  .topbar{padding-left:56px !important;padding-right:11px}
+  .topbar{padding-left:104px !important;padding-right:11px}
   .collapse-btn{width:36px;height:36px;top:calc(10px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left))}
+  .theme-btn{width:36px;height:36px;flex:0 0 36px;top:calc(10px + env(safe-area-inset-top));left:calc(54px + env(safe-area-inset-left))}
   .metric{padding:14px 16px}
   .metric .val{font-size:19px}
   .balance-num{font-size:30px}
@@ -431,12 +453,6 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
 <div class="app">
   <!-- ============ SIDEBAR ============ -->
   <aside class="sidebar" id="sidebar">
-    <!-- 深色模式：放在三条横杠上方 -->
-    <div class="theme-top">
-      <button class="theme-btn" id="themeBtn" title="深色模式"></button>
-      <span class="theme-txt" id="themeTag">深色模式</span>
-    </div>
-
     <div class="side-top">
       <span class="side-tag">班费管理</span>
     </div>
@@ -460,12 +476,15 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
     <div class="side-spacer"></div>
   </aside>
 
-  <!-- 三条杠按钮：放在侧边栏之外。
-       原因：侧边栏带 transform，会劫持内部 position:fixed 子元素的定位基准，
-       按钮会被抽屉一起推出屏幕；移出来才能真正钉在视口左上角。 -->
-  <button class="collapse-btn" id="collapseBtn" title="展开/收起导航" aria-label="展开或收起导航菜单">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-  </button>
+  <!-- 左上角控件组：三条杠 + 深色模式。
+       必须放在侧边栏之外 —— 侧边栏带 transform，会劫持内部 position:fixed
+       子元素的定位基准，把按钮一起拖出屏幕（这正是之前按钮消失的原因）。 -->
+  <div class="corner-controls">
+    <button class="collapse-btn" id="collapseBtn" title="展开/收起导航" aria-label="展开或收起导航菜单">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <button class="theme-btn" id="themeBtn" title="切换深色模式" aria-label="切换深色或浅色模式"></button>
+  </div>
 
   <div class="side-backdrop" id="sideBackdrop"></div>
 
@@ -1124,8 +1143,22 @@ function annCard(a,i){
 const SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg>';
 const MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>';
 function initTheme(){const t=lsGet("class_fund_theme")||"light";document.body.dataset.theme=t;renderTheme();}
-function renderTheme(){const d=document.body.dataset.theme==="dark";document.getElementById("themeBtn").innerHTML=d?SUN:MOON;document.getElementById("themeTag").textContent=d?"浅色模式":"深色模式";}
-function toggleTheme(){document.body.dataset.theme=document.body.dataset.theme==="dark"?"light":"dark";lsSet("class_fund_theme",document.body.dataset.theme);renderTheme();}
+/* 主题按钮已是纯图标按钮（文字标签在窄屏会挤占空间），
+   因此用 aria-label / title 承载它的名称与当前状态。 */
+function renderTheme(){
+  const d=document.body.dataset.theme==="dark";
+  const b=document.getElementById("themeBtn");
+  if(!b) return;
+  b.innerHTML=d?SUN:MOON;
+  b.setAttribute("aria-label", d?"当前深色模式，点击切换到浅色模式":"当前浅色模式，点击切换到深色模式");
+  b.title=d?"切换到浅色模式":"切换到深色模式";
+}
+function setTheme(v){
+  document.body.dataset.theme = (v==="dark") ? "dark" : "light";
+  lsSet("class_fund_theme", document.body.dataset.theme);
+  renderTheme();
+}
+function toggleTheme(){ setTheme(document.body.dataset.theme==="dark"?"light":"dark"); }
 initTheme();
 
 /* ================= SIDEBAR：宽屏折叠 / 窄屏抽屉 ================= */
