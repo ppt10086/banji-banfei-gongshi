@@ -142,7 +142,11 @@ button{font-family:inherit}
 .li-cat{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--accent-soft);color:var(--accent);font-weight:600}
 .li-amt{font-weight:700;font-size:14px;font-variant-numeric:tabular-nums;margin-top:5px}
 .li-amt.in{color:var(--ok)}.li-amt.out{color:var(--danger)}
-.li-del{cursor:pointer;opacity:0;transition:.2s;width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--danger);background:transparent;border:none}
+.li-del,.li-edit{cursor:pointer;opacity:0;transition:.2s;width:28px;height:28px;display:grid;place-items:center;border-radius:8px;background:transparent;border:none}
+.li-edit{color:var(--accent)}
+.li:hover .li-edit,.editing .li-edit{opacity:1}
+.li-edit:hover{background:var(--accent-soft)}
+.li-edit svg{width:15px;height:15px}
 .editing .li-del{opacity:.7}
 .li:hover .li-del{opacity:1}
 .li-del:hover{background:var(--danger-soft)}
@@ -361,7 +365,7 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
   <div class="modal">
     <div class="modal-head">
       <div class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
-      <div><div class="modal-title">新增收支记录</div><div class="modal-sub">按分组填写本次班费信息</div></div>
+      <div><div class="modal-title" id="recModalTitle">新增收支记录</div><div class="modal-sub" id="recModalSub">按分组填写本次班费信息</div></div>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -599,6 +603,9 @@ async function pullCloud(manual){
       // 云端还是空的，而本机已有数据 → 首次上传（仅在管理员登录后执行，避免访客把默认数据推上去）
       if (adminMode || meta.pushedOnce) {
         await pushCloud(true, "full");
+      } else if (annConfiguredLocally() || records.length || meta.pushedOnce) {
+        // 本机是本管理员的设备（公告已配置过）→ 管理员确实清空了，尊重本地真实状态
+        setSync("ok", "已就绪 · 本机 " + records.length + " 笔");
       } else {
         setSync("ok", "已就绪 · 本机 " + records.length + " 笔");
         toast("云端暂无数据，请班委登录管理员后完成首次上传", true);
@@ -624,7 +631,18 @@ async function pullCloud(manual){
       });
       const annKnown = new Set(annMerged.map(a => a.id));
       announces.forEach(l => { if (annDirty.has(l.id) && !annKnown.has(l.id)) annMerged.push(l); });
-      announces = annMerged;
+      if (annConfiguredLocally()) {
+        // 本机已配置过：就按上面合并的结果来（含"被清空"这一情况），
+        // 绝不把内置默认文案重新塞回去
+        announces = annMerged;
+      } else if (annMerged.length) {
+        // 从未配置过的新设备 → 采用云端正式公告
+        announces = annMerged;
+      } else {
+        // 云端一条公告都没有（管理员清空了，或从未发布过）→ 就是空的。
+        // 绝不能把内置默认文案放回来，否则"清空"这个操作等于失效。
+        announces = [];
+      }
 
       if (recDirty.size || annDirty.size) await pushCloud(true, "dirty");
     }
@@ -771,13 +789,19 @@ const ANN_DEFAULTS=[
   {t:"缴费温馨提示",p:"缴费请认准班委公布的唯一渠道，谨防冒充收款。如有疑问，可直接联系生活权益委员阙嘉俊核实。",tag:"权益提醒"}
 ];
 let announces = [];
+/* 本机是否"已经配置过公告"。
+   关键：本机存的是一份"空数组"时，说明管理员把公告全删光了 —— 这是一种
+   明确的状态，不能在下次打开时又把内置默认文案放回来。
+   只有"从未配置过"（键不存在）才用默认文案打底。 */
+function annConfiguredLocally(){ return lsGet(ANN_KEY) !== null; }
+
 function loadAnnLocal(){
   try {
     const s = lsGet(ANN_KEY);
     if (s !== null) {
       const a = JSON.parse(s);
-      if (Array.isArray(a) && a.length) {
-        // 本机存有公告副本 → 视为管理员改过的内容，纳入待同步集合
+      if (Array.isArray(a)) {
+        // 存过就是"已配置"：空数组代表管理员清空了公告，照实呈现
         return a.map(function(x){
           const o = {id:String(x.id||("a"+uid())), t:x.t, p:x.p, tag:x.tag||"", _upd:x._upd||""};
           annDirty.add(o.id);
@@ -914,7 +938,7 @@ function liRow(r){
     <div class="li-ico ${inC?"in":"out"}">${iconChar(r.cat)}</div>
     <div class="li-main"><b>${esc(r.item)}</b><span>${r.date||"—"} · ${esc(r.cat)} · ${esc(r.by||"—")}</span></div>
     <div class="li-side"><span class="li-cat">${TYPE[r.type]}</span><div class="li-amt ${inC?"in":"out"}">${inC?"+":"−"}¥${fmt(r.amount)}</div></div>
-    ${adminMode?`<button class="li-del" data-del="${r.id}" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`:""}
+    ${adminMode?`<button class="li-edit" data-edit="${r.id}" title="修改这条记录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4L8 20l-5 1 1-5L17 3z"/></svg></button><button class="li-del" data-del="${r.id}" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`:""}
   </div>`;
 }
 function ledgerMatched(){
@@ -1019,7 +1043,10 @@ function emptySvg(title,sub){
 }
 
 /* ================= EVENTS ================= */
-function bindListDels(root){root.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();promptDelete(b.dataset.del);}));}
+function bindListDels(root){
+  root.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();promptDelete(b.dataset.del);}));
+  root.querySelectorAll("[data-edit]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();openAdd(b.dataset.edit);}));
+}
 function bindPageEvents(){
   document.querySelectorAll("[data-goto]").forEach(el=>el.addEventListener("click",()=>{animateContent=true;activePage=el.dataset.goto;render();}));
   bindListDels(document.getElementById("content"));
@@ -1091,7 +1118,7 @@ function mix(){requestAnimationFrame(()=>{document.querySelectorAll(".bar i[data
 document.getElementById("nav").addEventListener("click",e=>{const it=e.target.closest(".nav-item");if(!it)return;animateContent=true;activePage=it.dataset.page;render();});
 document.getElementById("themeBtn").addEventListener("click",toggleTheme);
 document.getElementById("btnAdminMode").addEventListener("click",openPwd);
-document.getElementById("btnAddRec").addEventListener("click",openAdd);
+document.getElementById("btnAddRec").addEventListener("click",()=>openAdd(null));
 /* collapse */
 document.getElementById("collapseBtn").addEventListener("click",()=>{setCollapsed(!sidebar.classList.contains("collapsed"));animateSide();});
 mountCollapse();
@@ -1125,8 +1152,38 @@ const addO=document.getElementById("addOverlay");let catSel=document.getElementB
 function fillCats(){catSel.innerHTML=CATEGORIES[document.getElementById("fType").value].map(c=>`<option>${c}</option>`).join("");}
 fillCats();
 document.getElementById("fType").addEventListener("change",fillCats);
-function openAdd(){if(!adminMode)return;["fItem","fNote"].forEach(i=>document.getElementById(i).value="");document.getElementById("fAmount").value="";document.getElementById("fDate").value=todayISO();document.getElementById("addErr").classList.remove("show");fillCats();addO.classList.add("show");}
-function closeAdd(){addO.classList.remove("show");document.getElementById("addErr").classList.remove("show");}
+let recEditId=null;   // null=新增；否则为正在编辑的记录 id
+function openAdd(editId){
+  if(!adminMode)return;
+  recEditId = (editId!==undefined && editId!==null) ? String(editId) : null;
+  const editing = recEditId!==null;
+  const rec = editing ? records.find(r=>String(r.id)===recEditId) : null;
+  if(editing && !rec){toast("找不到这条记录，请刷新后重试",false);return;}
+  document.getElementById("recModalTitle").textContent = editing?"修改收支记录":"新增收支记录";
+  document.getElementById("recModalSub").textContent = editing?"改动会立即同步到云端公示":"按分组填写本次班费信息";
+  document.getElementById("addSave").textContent = editing?"保存修改":"保存记录";
+  if(editing){
+    document.getElementById("fType").value = rec.type;
+    fillCats();
+    document.getElementById("fCat").value = rec.cat;
+    // 若原分类不在预设列表里（手工改过），补一个选项，避免被静默替换
+    const cs=document.getElementById("fCat");
+    if(cs.value!==rec.cat){const o=document.createElement("option");o.textContent=rec.cat;o.value=rec.cat;cs.appendChild(o);cs.value=rec.cat;}
+    document.getElementById("fItem").value = rec.item;
+    document.getElementById("fAmount").value = rec.amount;
+    document.getElementById("fDate").value = rec.date||todayISO();
+    document.getElementById("fNote").value = rec.note||"";
+  }else{
+    ["fItem","fNote"].forEach(i=>document.getElementById(i).value="");
+    document.getElementById("fAmount").value="";
+    document.getElementById("fDate").value=todayISO();
+    fillCats();
+  }
+  document.getElementById("addErr").classList.remove("show");
+  addO.classList.add("show");
+  setTimeout(()=>document.getElementById("fItem").focus(),50);
+}
+function closeAdd(){addO.classList.remove("show");document.getElementById("addErr").classList.remove("show");recEditId=null;}
 document.getElementById("addCancel").addEventListener("click",closeAdd);
 addO.addEventListener("click",e=>{if(e.target===addO)closeAdd();});
 document.getElementById("addSave").addEventListener("click",saveAdd);
@@ -1135,19 +1192,32 @@ function saveAdd(){
   const item=document.getElementById("fItem").value.trim();
   const amount=parseFloat(document.getElementById("fAmount").value);
   if(!item||!amount||amount<=0){document.getElementById("addErr").classList.add("show");return;}
-  records.push({
-    id:uid(),
+  const now=new Date().toISOString();
+  const fields={
     type:document.getElementById("fType").value,
     cat:document.getElementById("fCat").value,
-    item:item, amount:amount,
+    item:item,
+    amount:amount,
     date:document.getElementById("fDate").value||todayISO(),
     note:document.getElementById("fNote").value.trim(),
     by:"管理员",
-    _upd:new Date().toISOString()
-  });
-  recDirty.add(records[records.length-1].id);
-  save();closeAdd();render();pushCloud();
-  toast("记录已添加并同步公示");
+    _upd:now
+  };
+  if(recEditId!==null){
+    const idx=records.findIndex(r=>String(r.id)===recEditId);
+    if(idx<0){document.getElementById("addErr").classList.add("show");return;}
+    records[idx]=Object.assign({},records[idx],fields);
+    recDirty.add(recEditId);
+    recEditId=null;
+    save();closeAdd();render();pushCloud();
+    toast("记录已修改并同步云端");
+  }else{
+    const rec=Object.assign({id:uid()},fields);
+    records.push(rec);
+    recDirty.add(rec.id);
+    save();closeAdd();render();pushCloud();
+    toast("记录已添加并同步公示");
+  }
 }
 
 /* ================= DELETE ================= */
