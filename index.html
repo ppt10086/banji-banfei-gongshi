@@ -476,137 +476,12 @@ const cloud = {
   queued: false
 };
 /* 读取云端配置。
-   注意：部署器把注入脚本放在 
-<!-- deployed-by-html2github site_id=banji-banfei-gongshi -->
-<script>
-
-(function () {
-  "use strict";
-  var CFG = {
-    url: "https://zloaudskrsdlisgwyfvt.supabase.co",
-    key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsb2F1ZHNrcnNkbGlzZ3d5ZnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NTExMjIsImV4cCI6MjEwMzMyNzEyMn0.4TWnLMChq7C00NGK1DRAfYdyPb5udhqkj679nMCA8A4",
-    siteId: "banji-banfei-gongshi"
-  };
-  var API = String(CFG.url).replace(/\/+$/, "");
-  var SESSION_KEY = "sitedb_session_" + CFG.siteId;
-  var session = null;
-  try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { session = null; }
-
-  function esc(s) {
-    var d = document.createElement("div");
-    d.textContent = s == null ? "" : String(s);
-    return d.innerHTML;
-  }
-
-  function toast(msg, ok) {
-    var t = document.createElement("div");
-    t.textContent = msg;
-    t.style.cssText = "position:fixed;z-index:99999;left:50%;bottom:24px;transform:translateX(-50%);background:" + (ok ? "#16a34a" : "#dc2626") + ";color:#fff;padding:10px 18px;border-radius:8px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.25)";
-    document.body.appendChild(t);
-    setTimeout(function () { t.remove(); }, 2600);
-  }
-
-  function api(path, opts) {
-    opts = opts || {};
-    return fetch(API + path, {
-      method: opts.method || "GET",
-      headers: {
-        "apikey": CFG.key,
-        "Authorization": "Bearer " + (opts.token || CFG.key),
-        "Content-Type": "application/json"
-      },
-      body: opts.body ? JSON.stringify(opts.body) : undefined
-    }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) {
-        if (!r.ok) {
-          var msg = (j && (j.error_description || j.msg || j.message)) || ("请求失败 " + r.status);
-          var err = new Error(msg);
-          err.status = r.status;
-          throw err;
-        }
-        return j;
-      });
-    });
-  }
-
-  function saveSession(token, user) {
-    session = {
-      access_token: token,
-      email: user && user.email,
-      user_metadata: (user && user.user_metadata) || {}
-    };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-
-  function register(email, username, password) {
-    return api("/auth/v1/signup", {
-      method: "POST",
-      body: {
-        email: email,
-        password: password,
-        data: { username: username, site_id: CFG.siteId }
-      }
-    }).then(function (res) {
-      if (res.access_token) { saveSession(res.access_token, res.user); }
-      return res.user;
-    });
-  }
-
-  function login(email, password) {
-    return api("/auth/v1/token?grant_type=password", {
-      method: "POST",
-      body: { email: email, password: password }
-    }).then(function (res) {
-      saveSession(res.access_token, res.user);
-      return res.user;
-    });
-  }
-
-  function logout() {
-    session = null;
-    localStorage.removeItem(SESSION_KEY);
-    toast("已退出登录");
-  }
-
-  function submitJson(data) {
-    return api("/rest/v1/form_submissions", {
-      method: "POST",
-      body: { site_id: CFG.siteId, payload: data || {} }
-    }).then(function () {
-      toast("提交成功，感谢反馈！", true);
-    }).catch(function (e) {
-      toast("提交失败：" + e.message);
-      throw e;
-    });
-  }
-
-  function submitForm(evt) {
-    if (evt && evt.preventDefault) { evt.preventDefault(); }
-    var form = evt && evt.target;
-    var data = {};
-    if (form) {
-      var fd = new FormData(form);
-      fd.forEach(function (v, k) { data[k] = v; });
-    }
-    return submitJson(data);
-  }
-
-  window.SiteDB = {
-    register: register,
-    login: login,
-    logout: logout,
-    submitForm: submitForm,
-    submitJson: submitJson,
-    session: function () { return session; },
-    config: CFG
-  };
-
-})();
-
-</script>
-</body> 之前，即"主脚本之后"执行，
+   注意：部署器把 SiteDB 注入脚本放在文档末尾，即"主脚本之后"才执行，
    所以主脚本解析时 window.SiteDB 还不存在 —— 必须等到 DOM 就绪后
-   再调用一次本函数，才能真正拿到 Supabase 地址 / key / site_id。 */
+   再调用一次本函数，才能真正拿到 Supabase 地址 / key / site_id。
+   另注：本注释刻意不写出 body 结束标签的字样 —— 部署器是按"第一个该标签"
+   定位注入点的，若注释里出现该字样，注入脚本会被插进本段 JS 中间，
+   直接导致整页脚本语法错误。 */
 function initCloud(){
   var st = (window.SiteDB && window.SiteDB.config) || null;
   var url = (st && st.url) || SUPABASE_URL || "";
@@ -1333,6 +1208,134 @@ function boot(){
 }
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",boot);}
 else{boot();}
+</script>
+
+<!-- deployed-by-html2github site_id=banji-banfei-gongshi -->
+<script>
+
+(function () {
+  "use strict";
+  var CFG = {
+    url: "https://zloaudskrsdlisgwyfvt.supabase.co",
+    key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsb2F1ZHNrcnNkbGlzZ3d5ZnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NTExMjIsImV4cCI6MjEwMzMyNzEyMn0.4TWnLMChq7C00NGK1DRAfYdyPb5udhqkj679nMCA8A4",
+    siteId: "banji-banfei-gongshi"
+  };
+  var API = String(CFG.url).replace(/\/+$/, "");
+  var SESSION_KEY = "sitedb_session_" + CFG.siteId;
+  var session = null;
+  try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { session = null; }
+
+  function esc(s) {
+    var d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function toast(msg, ok) {
+    var t = document.createElement("div");
+    t.textContent = msg;
+    t.style.cssText = "position:fixed;z-index:99999;left:50%;bottom:24px;transform:translateX(-50%);background:" + (ok ? "#16a34a" : "#dc2626") + ";color:#fff;padding:10px 18px;border-radius:8px;font:14px/1.4 system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.25)";
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 2600);
+  }
+
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch(API + path, {
+      method: opts.method || "GET",
+      headers: {
+        "apikey": CFG.key,
+        "Authorization": "Bearer " + (opts.token || CFG.key),
+        "Content-Type": "application/json"
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) {
+          var msg = (j && (j.error_description || j.msg || j.message)) || ("请求失败 " + r.status);
+          var err = new Error(msg);
+          err.status = r.status;
+          throw err;
+        }
+        return j;
+      });
+    });
+  }
+
+  function saveSession(token, user) {
+    session = {
+      access_token: token,
+      email: user && user.email,
+      user_metadata: (user && user.user_metadata) || {}
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+
+  function register(email, username, password) {
+    return api("/auth/v1/signup", {
+      method: "POST",
+      body: {
+        email: email,
+        password: password,
+        data: { username: username, site_id: CFG.siteId }
+      }
+    }).then(function (res) {
+      if (res.access_token) { saveSession(res.access_token, res.user); }
+      return res.user;
+    });
+  }
+
+  function login(email, password) {
+    return api("/auth/v1/token?grant_type=password", {
+      method: "POST",
+      body: { email: email, password: password }
+    }).then(function (res) {
+      saveSession(res.access_token, res.user);
+      return res.user;
+    });
+  }
+
+  function logout() {
+    session = null;
+    localStorage.removeItem(SESSION_KEY);
+    toast("已退出登录");
+  }
+
+  function submitJson(data) {
+    return api("/rest/v1/form_submissions", {
+      method: "POST",
+      body: { site_id: CFG.siteId, payload: data || {} }
+    }).then(function () {
+      toast("提交成功，感谢反馈！", true);
+    }).catch(function (e) {
+      toast("提交失败：" + e.message);
+      throw e;
+    });
+  }
+
+  function submitForm(evt) {
+    if (evt && evt.preventDefault) { evt.preventDefault(); }
+    var form = evt && evt.target;
+    var data = {};
+    if (form) {
+      var fd = new FormData(form);
+      fd.forEach(function (v, k) { data[k] = v; });
+    }
+    return submitJson(data);
+  }
+
+  window.SiteDB = {
+    register: register,
+    login: login,
+    logout: logout,
+    submitForm: submitForm,
+    submitJson: submitJson,
+    session: function () { return session; },
+    config: CFG
+  };
+
+})();
+
 </script>
 </body>
 </html>
