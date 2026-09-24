@@ -43,8 +43,11 @@ button{font-family:inherit}
 .theme-btn svg{width:17px;height:17px}
 .theme-txt{font-size:12.5px;font-weight:600;white-space:nowrap;opacity:1;transition:opacity .2s}
 .sidebar.collapsed .theme-txt{opacity:0}
-.side-top{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.collapse-btn{width:38px;height:38px;flex:0 0 38px;border-radius:10px;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer;transition:.25s var(--ease)}
+.side-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;padding-left:44px;min-height:40px}
+.collapse-btn{position:absolute;top:20px;left:22px;z-index:30;
+  width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer;
+  transition:color .25s var(--ease),border-color .25s var(--ease),transform .25s var(--ease);padding:0}
 .collapse-btn:hover{color:var(--accent);border-color:var(--accent)}
 .collapse-btn svg{width:18px;height:18px}
 .side-tag{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden}
@@ -67,12 +70,33 @@ button{font-family:inherit}
 
 /* ---------- 移动端抽屉与遮罩 ---------- */
 .side-backdrop{position:fixed;inset:0;background:rgba(10,12,16,.46);opacity:0;pointer-events:none;transition:opacity .26s var(--ease);z-index:40;-webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px)}
-.side-backdrop.show{opacity:1;pointer-events:auto}
+.side-backdrop.show{opacity:1;pointer-events:auto;z-index:55}
 @media (max-width:920px){
   /* 侧边栏脱离文档流：浮在内容之上，不再占宽度 */
   .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:50;width:min(84vw,296px);flex-basis:auto;
-    transform:translateX(-104%);transition:transform .3s var(--ease);box-shadow:0 18px 50px rgba(0,0,0,.28);padding-top:calc(14px + env(safe-area-inset-top))}
+    transform:translateX(-104%);transition:transform .3s var(--ease);box-shadow:0 18px 50px rgba(0,0,0,.28);
+    padding-top:calc(22px + env(safe-area-inset-top))}
   .sidebar:not(.collapsed){transform:translateX(0)}
+
+  /* 三条杠按钮钉在视口左上角：
+     它原本在侧边栏内部，抽屉收起时会被一起移出屏幕（→ 用户看不到按钮）。
+     这里让它脱离侧边栏定位，抽屉开或关都在同一个位置。 */
+  /* 按钮此时已在侧边栏之外，fixed 能真正相对视口定位，稳稳钉在左上角。
+     z-index 高于遮罩(55)与抽屉(50)：抽屉展开时它依然可见可点，作为统一的开关。 */
+  .collapse-btn{position:fixed;top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));
+    z-index:70;width:40px;height:40px;background:var(--panel);border:1px solid var(--line);
+    box-shadow:0 6px 18px rgba(24,30,44,.16);color:var(--ink)}
+  .collapse-btn svg{width:20px;height:20px}
+  .side-top{height:0;margin:0;padding:0;overflow:visible;min-height:0}
+  /* 抽屉里不再重复显示品牌名（按钮已移出，留着只会错位） */
+  .side-tag{display:none}
+  /* 顶栏让开按钮：左上留出按钮宽度 + 间距，标题与按钮同高。
+     注意必须写在 680/560 断点之后并提高选择器权重，
+     否则会被"容器内边距统一收窄"的规则覆盖掉，标题就会压到按钮下面。 */
+  .topbar{padding-left:62px !important;min-height:66px;align-items:flex-start}
+  .topbar>div:first-child{padding-top:8px}
+  /* 确认删除按钮与其他固定层的层级低于抽屉 */
+  .overlay{z-index:80}
   /* 抽屉打开时不需要"折叠成 60px"那套逻辑，直接整块显示 */
   .sidebar .theme-txt,.sidebar .nav-label,.sidebar .nav,.sidebar .side-tag{display:revert}
   .sidebar.collapsed .theme-btn{display:revert}
@@ -388,7 +412,9 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
 
 /* 超窄机（320 一档）：进一步收紧留白，保证内容舒展 */
 @media (max-width:380px){
-  .content,.topbar{padding-left:11px;padding-right:11px}
+  .content{padding-left:11px;padding-right:11px}
+  .topbar{padding-left:56px !important;padding-right:11px}
+  .collapse-btn{width:36px;height:36px;top:calc(10px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left))}
   .metric{padding:14px 16px}
   .metric .val{font-size:19px}
   .balance-num{font-size:30px}
@@ -412,9 +438,6 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
     </div>
 
     <div class="side-top">
-      <button class="collapse-btn" id="collapseBtn" title="折叠/展开侧边栏">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-      </button>
       <span class="side-tag">班费管理</span>
     </div>
 
@@ -436,6 +459,14 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.6}
 
     <div class="side-spacer"></div>
   </aside>
+
+  <!-- 三条杠按钮：放在侧边栏之外。
+       原因：侧边栏带 transform，会劫持内部 position:fixed 子元素的定位基准，
+       按钮会被抽屉一起推出屏幕；移出来才能真正钉在视口左上角。 -->
+  <button class="collapse-btn" id="collapseBtn" title="展开/收起导航" aria-label="展开或收起导航菜单">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+
   <div class="side-backdrop" id="sideBackdrop"></div>
 
   <!-- ============ MAIN ============ -->
